@@ -1,0 +1,14 @@
+[build]
+builder = "nixpacks"
+
+[deploy]
+startCommand = "python weather_bot.py"
+healthcheckPath = "/"
+healthcheckTimeout = 30
+restartPolicyType = "on-failure"
+restartPolicyMaxRetries = 3
+
+[[cron]]
+command = "python weather_bot.py"
+schedule = "0 20 * * 2,5"  # UTC = 23:00 Tehran (winter)
+description = "Weather forecast analysis for Nowshahr - Friday & Tuesday 23:00 local"
