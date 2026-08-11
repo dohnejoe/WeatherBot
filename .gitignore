@@ -1,5 +1,4 @@
 # Secrets
-config.yaml
 .env
 *.key
 *.secret

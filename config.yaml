@@ -1,0 +1,32 @@
+# Weather Bot Configuration
+# Copy this file and fill in your actual API keys
+
+telegram:
+  bot_token: "YOUR_TELEGRAM_BOT_TOKEN"  # From @BotFather
+  chat_id: "YOUR_CHAT_ID"               # Your user ID or group ID
+
+gemini:
+  api_key: "YOUR_GEMINI_API_KEY"        # From Google AI Studio (or env var GEMINI_API_KEY)
+  model: "gemini-flash-lite-latest"     # Available model for google-genai SDK
+
+location:
+  name: "نوشهر"
+  latitude: 36.65
+  longitude: 51.50
+  timezone: "Asia/Tehran"
+
+forecast:
+  days: 14
+
+models:
+  - name: "GFS"
+    open_meteo_model: "gfs_seamless"
+  - name: "ECMWF"
+    open_meteo_model: "ecmwf_ifs04"
+  - name: "ICON"
+    open_meteo_model: "icon_seamless"
+
+schedule:
+  # Cron expression for: Friday 23:00 and Tuesday 23:00 (Asia/Tehran)
+  # Format: minute hour day_of_month month day_of_week
+  cron_expression: "0 23 * * 2,5"
