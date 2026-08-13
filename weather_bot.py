@@ -13,6 +13,7 @@ import requests
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from telegram import Bot
+from telegram.error import TelegramError
 import asyncio
 import logging
 
@@ -23,6 +24,8 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
+# httpx logs full request URLs, which can expose the bot token in Telegram URLs.
+logging.getLogger('httpx').setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), 'config.yaml')
@@ -224,10 +227,29 @@ def main():
     logger.info("Analyzing with Gemini...")
     analysis = analyze_with_gemini(gemini_key, config['gemini']['model'], forecast_texts, loc_name, days)
 
-    # Send to Telegram for all chat IDs
+    # Send to Telegram for all chat IDs. One invalid/inaccessible chat must not
+    # prevent delivery to the remaining recipients.
+    failed_chat_ids = []
     for chat_id in chat_ids:
         logger.info(f"Sending to Telegram chat ID: {chat_id}...")
-        asyncio.run(send_telegram(tg_token, chat_id, analysis))
+        try:
+            asyncio.run(send_telegram(tg_token, chat_id, analysis))
+        except TelegramError as exc:
+            failed_chat_ids.append(str(chat_id))
+            logger.error(
+                "Telegram delivery failed for chat ID %s: %s",
+                chat_id,
+                exc
+            )
+        except Exception:
+            failed_chat_ids.append(str(chat_id))
+            logger.exception("Unexpected delivery failure for chat ID %s", chat_id)
+
+    if failed_chat_ids:
+        logger.warning("Failed Telegram chat IDs: %s", ', '.join(failed_chat_ids))
+    if len(failed_chat_ids) == len(chat_ids):
+        logger.error("Telegram delivery failed for every configured chat ID.")
+        sys.exit(1)
     logger.info("✅ Done!")
 
 
