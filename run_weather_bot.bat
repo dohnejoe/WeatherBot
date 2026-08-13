@@ -1,19 +1,24 @@
 @echo off
-REM Weather Bot Runner - Sets env vars and runs the bot
-REM Edit the values below with your actual keys (or keep them in Windows User Environment Variables)
+REM Local Weather Bot Runner
+REM Keep secrets in Windows environment variables, not in this file.
 
-set GEMINI_API_KEY=AQ.Ab8RN6KNLljwkpHR4Z2rCUvUbq9QhCeGLOYErDdXA3OkTWXPHA
-set TG_BOT_TOKEN=8897059207:AAEbm_cl_GSO8J5bD3d6OwTk90b8pGPXGXw
-set TG_CHAT_ID=77917638
+if not defined GEMINI_API_KEY (
+    echo ERROR: GEMINI_API_KEY is not set.
+    exit /b 1
+)
+if not defined TG_BOT_TOKEN (
+    echo ERROR: TG_BOT_TOKEN is not set.
+    exit /b 1
+)
 
 cd /d "C:\Users\Ebi\workspace\weather_bot"
 python weather_bot.py
 
-REM Pause on error so you can see the message
 if errorlevel 1 (
     echo.
     echo ========================================
     echo ERROR: Bot failed. Check the logs above.
     echo ========================================
     pause
+    exit /b 1
 )

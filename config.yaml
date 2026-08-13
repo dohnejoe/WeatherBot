@@ -3,7 +3,7 @@
 
 telegram:
   bot_token: "YOUR_TELEGRAM_BOT_TOKEN"  # From @BotFather
-  chat_id: "YOUR_CHAT_ID"               # Your user ID or group ID
+  chat_ids: ["77917638", "470638456"]               # Your user ID or group ID
 
 gemini:
   api_key: "YOUR_GEMINI_API_KEY"        # From Google AI Studio (or env var GEMINI_API_KEY)

@@ -3,8 +3,5 @@ builder = "nixpacks"
 
 [deploy]
 startCommand = "python weather_bot.py"
-
-[[cron]]
-command = "python weather_bot.py"
-schedule = "0 20 * * 2,5"  # UTC = 23:00 Tehran (winter)
-description = "Weather forecast analysis for Nowshahr - Friday & Tuesday 23:00 local"
+# Railway Cron schedules use UTC. 19:30 UTC = 23:00 Asia/Tehran.
+cronSchedule = "30 19 * * 2,5"

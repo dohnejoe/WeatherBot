@@ -11,13 +11,13 @@ import sys
 import yaml
 import requests
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from telegram import Bot
 import asyncio
 import logging
 
 # New Google GenAI SDK
 from google import genai
-from google.genai import types
 
 logging.basicConfig(
     level=logging.INFO,
@@ -61,12 +61,22 @@ def fetch_open_meteo(lat, lon, model, days=14):
 
 def format_forecast_data(daily_data, model_name, location_name, days=14):
     """Format raw forecast data into a structured text for Gemini."""
-    if not daily_data or 'time' not in daily_data:
+    required_fields = [
+        'time', 'temperature_2m_max', 'temperature_2m_min',
+        'precipitation_sum', 'precipitation_probability_max',
+        'windspeed_10m_max', 'winddirection_10m_dominant',
+        'relative_humidity_2m_mean', 'weathercode'
+    ]
+    if not daily_data or any(field not in daily_data for field in required_fields):
+        return f"داده‌ای برای مدل {model_name} دریافت نشد."
+
+    row_count = min(len(daily_data[field]) for field in required_fields)
+    if row_count == 0:
         return f"داده‌ای برای مدل {model_name} دریافت نشد."
 
     lines = [
         f"📍 پیش‌بینی {days} روزه برای {location_name} — مدل {model_name}",
-        f"🕐 Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+        f"🕐 Generated: {datetime.now(ZoneInfo('Asia/Tehran')).strftime('%Y-%m-%d %H:%M')}",
         "=" * 50
     ]
 
@@ -80,7 +90,7 @@ def format_forecast_data(daily_data, model_name, location_name, days=14):
         95: "⛈️ طوفان رعدی", 96: "⛈️ طوفان رعدی با توف", 99: "⛈️ طوفان رعدی شدید با توف"
     }
 
-    for i in range(min(days, len(daily_data['time']))):
+    for i in range(min(days, row_count)):
         date = daily_data['time'][i]
         t_max = daily_data['temperature_2m_max'][i]
         t_min = daily_data['temperature_2m_min'][i]
@@ -96,7 +106,7 @@ def format_forecast_data(daily_data, model_name, location_name, days=14):
             f"\n📅 {date} | {weather_desc}\n"
             f"   🌡️ ماکس: {t_max}°C | مین: {t_min}°C\n"
             f"   💧 بارش: {precip}mm ({precip_prob}% احتمال)\n"
-            f"   💨 باد: {wind} km/h ({wind_dir}°)\\n"
+            f"   💨 باد: {wind} km/h ({wind_dir}°)\n"
             f"   💦 رطوبت: {humidity}%"
         )
 
@@ -143,24 +153,32 @@ def analyze_with_gemini(api_key, model_name, forecast_texts, location_name, days
             model=model_name,
             contents=prompt
         )
-        return response.text
+        return response.text or "❌ پاسخ متنی از جمینای دریافت نشد."
     except Exception as e:
         logger.error(f"Gemini error: {e}")
         return f"❌ خطا در تحلیل جمینای: {e}"
 
 
 async def send_telegram(bot_token, chat_id, text):
-    """Send message to Telegram."""
-    bot = Bot(token=bot_token)
-    # Telegram max message length is 4096 chars
-    if len(text) <= 4000:
-        await bot.send_message(chat_id=chat_id, text=text, parse_mode='HTML')
-    else:
-        # Split into chunks
-        for i in range(0, len(text), 4000):
-            chunk = text[i:i+4000]
-            await bot.send_message(chat_id=chat_id, text=chunk, parse_mode='HTML')
-            await asyncio.sleep(0.5)
+    """Send plain-text message chunks to Telegram."""
+    chunks = []
+    current = ""
+    for line in text.splitlines(keepends=True):
+        if len(current) + len(line) > 4000 and current:
+            chunks.append(current)
+            current = ""
+        while len(line) > 4000:
+            chunks.append(line[:4000])
+            line = line[4000:]
+        current += line
+    if current or not chunks:
+        chunks.append(current)
+
+    async with Bot(token=bot_token) as bot:
+        for index, chunk in enumerate(chunks):
+            await bot.send_message(chat_id=chat_id, text=chunk)
+            if index < len(chunks) - 1:
+                await asyncio.sleep(0.5)
 
 
 def main():
@@ -169,7 +187,12 @@ def main():
     # Read secrets from environment variables first (secure), fallback to config.yaml
     gemini_key = os.environ.get("GEMINI_API_KEY") or config['gemini'].get('api_key', '')
     tg_token = os.environ.get("TG_BOT_TOKEN") or config['telegram'].get('bot_token', '')
-    chat_id = os.environ.get("TG_CHAT_ID") or config['telegram'].get('chat_id', '')
+    chat_ids_env = os.environ.get('TG_CHAT_IDS', '')
+    chat_ids = [item.strip() for item in chat_ids_env.split(',') if item.strip()]
+    if not chat_ids:
+        chat_ids = config['telegram'].get('chat_ids', [])
+    if isinstance(chat_ids, (str, int)):
+        chat_ids = [str(chat_ids)]
 
     lat = config['location']['latitude']
     lon = config['location']['longitude']
@@ -177,11 +200,11 @@ def main():
     days = config['forecast']['days']
     models = config['models']
 
-    if not tg_token or not chat_id:
-        logger.error("❌ Telegram credentials missing. Set TG_BOT_TOKEN and TG_CHAT_ID env vars or config.yaml")
+    if not tg_token or tg_token == 'YOUR_TELEGRAM_BOT_TOKEN' or not chat_ids:
+        logger.error("❌ Telegram credentials missing. Set TG_BOT_TOKEN and chat IDs.")
         sys.exit(1)
-    if not gemini_key:
-        logger.error("❌ Gemini API key missing. Set GEMINI_API_KEY env var or config.yaml")
+    if not gemini_key or gemini_key == 'YOUR_GEMINI_API_KEY':
+        logger.error("❌ Gemini API key missing. Set GEMINI_API_KEY.")
         sys.exit(1)
 
     logger.info(f"Fetching forecasts for {loc_name} ({lat}, {lon})...")
@@ -201,9 +224,10 @@ def main():
     logger.info("Analyzing with Gemini...")
     analysis = analyze_with_gemini(gemini_key, config['gemini']['model'], forecast_texts, loc_name, days)
 
-    # Send to Telegram
-    logger.info("Sending to Telegram...")
-    asyncio.run(send_telegram(tg_token, chat_id, analysis))
+    # Send to Telegram for all chat IDs
+    for chat_id in chat_ids:
+        logger.info(f"Sending to Telegram chat ID: {chat_id}...")
+        asyncio.run(send_telegram(tg_token, chat_id, analysis))
     logger.info("✅ Done!")
 
 
