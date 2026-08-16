@@ -69,7 +69,13 @@ def load_config():
 
 def fetch_open_meteo(lat, lon, model, days=14):
     """Fetch forecast from Open-Meteo for a specific model."""
-    url = "https://api.open-meteo.com/v1/forecast"
+    # Open-Meteo now exposes ECMWF through its dedicated endpoint. The
+    # generic /v1/forecast route can return null arrays for ecmwf_ifs04.
+    if model == "ecmwf_ifs04":
+        url = "https://api.open-meteo.com/v1/ecmwf"
+    else:
+        url = "https://api.open-meteo.com/v1/forecast"
+
     params = {
         "latitude": lat,
         "longitude": lon,
@@ -80,9 +86,10 @@ def fetch_open_meteo(lat, lon, model, days=14):
             "weathercode", "relative_humidity_2m_mean"
         ],
         "timezone": "Asia/Tehran",
-        "forecast_days": days,
-        "models": model
+        "forecast_days": days
     }
+    if model != "ecmwf_ifs04":
+        params["models"] = model
     try:
         resp = requests.get(url, params=params, timeout=30)
         resp.raise_for_status()
