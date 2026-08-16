@@ -13,6 +13,7 @@ import requests
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from telegram import Bot
+import jdatetime
 from telegram.error import TelegramError
 import asyncio
 import logging
@@ -29,6 +30,36 @@ logging.getLogger('httpx').setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), 'config.yaml')
+
+PERSIAN_MONTHS = [
+    "فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور",
+    "مهر", "آبان", "آذر", "دی", "بهمن", "اسفند"
+]
+GREGORIAN_MONTHS = [
+    "ژانویه", "فوریه", "مارس", "آوریل", "مه", "ژوئن",
+    "ژوئیه", "آگوست", "سپتامبر", "اکتبر", "نوامبر", "دسامبر"
+]
+
+
+def to_persian_digits(value):
+    return str(value).translate(str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹"))
+
+
+def format_date_mapping(iso_date):
+    """Return a deterministic Gregorian/Jalali label for Gemini to copy."""
+    gregorian = datetime.strptime(iso_date, "%Y-%m-%d").date()
+    jalali = jdatetime.date.fromgregorian(date=gregorian)
+    gregorian_label = (
+        f"{to_persian_digits(gregorian.day)} "
+        f"{GREGORIAN_MONTHS[gregorian.month - 1]} "
+        f"{to_persian_digits(gregorian.year)}"
+    )
+    jalali_label = (
+        f"{to_persian_digits(jalali.day)} "
+        f"{PERSIAN_MONTHS[jalali.month - 1]} "
+        f"{to_persian_digits(jalali.year)}"
+    )
+    return f"{gregorian_label} ({jalali_label})"
 
 
 def load_config():
@@ -95,6 +126,7 @@ def format_forecast_data(daily_data, model_name, location_name, days=14):
 
     for i in range(min(days, row_count)):
         date = daily_data['time'][i]
+        date_mapping = format_date_mapping(date)
         t_max = daily_data['temperature_2m_max'][i]
         t_min = daily_data['temperature_2m_min'][i]
         precip = daily_data['precipitation_sum'][i]
@@ -106,7 +138,7 @@ def format_forecast_data(daily_data, model_name, location_name, days=14):
         weather_desc = weather_codes.get(wcode, f"کد {wcode}")
 
         lines.append(
-            f"\n📅 {date} | {weather_desc}\n"
+            f"\n📅 {date} | {date_mapping} | {weather_desc}\n"
             f"   🌡️ ماکس: {t_max}°C | مین: {t_min}°C\n"
             f"   💧 بارش: {precip}mm ({precip_prob}% احتمال)\n"
             f"   💨 باد: {wind} km/h ({wind_dir}°)\n"
@@ -124,6 +156,8 @@ def analyze_with_gemini(api_key, model_name, forecast_texts, location_name, days
 
 موقعیت: {location_name}
 بازه: {days} روز آینده
+
+قانون فنی تاریخ‌ها (الزامی): تاریخ هر روز در داده خام به‌صورت میلادی ISO و در کنار آن با mapping قطعی میلادی/شمسی آمده است. در پاسخ فقط از همین mapping استفاده کن و هرگز روز و ماه را جداگانه تبدیل یا حدس نزن. برای بازه‌ها نیز نام ماه میلادی و معادل شمسی را دقیقاً مطابق همین mapping بنویس؛ مثلاً «۱۴ تا ۱۹ آگوست (۲۳ تا ۲۸ مرداد)».
 
 ⚠️ **ترجیحات کاربر (بسیار مهم)**:
 - از **گرما** و **رطوبت بالا** متنفره
